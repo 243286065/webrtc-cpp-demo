@@ -1,3 +1,17 @@
+## Download
+```
+mkdir webrtc-cpp-demo
+cd webrtc-cpp-demo
+
+gclient config --name src https://github.com/243286065/webrtc-cpp-demo.git --unmanaged
+gclient sync
+
+cd src
+git checkout demo
+gclient sync
+```
+  
+## WebRTC
 **WebRTC is a free, open software project** that provides browsers and mobile
 applications with Real-Time Communications (RTC) capabilities via simple APIs.
 The WebRTC components have been optimized to best serve this purpose.
