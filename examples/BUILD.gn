@@ -853,6 +853,8 @@ if (is_linux || is_win) {
       "desktop_capture/desktop_capture_source.cc",
       "desktop_capture/desktop_capture_source.h",
       "desktop_capture/main.cc",
+      "desktop_capture/video_encode_handler.cc",
+      "desktop_capture/video_encode_handler.h",
     ]
 
     deps = [
