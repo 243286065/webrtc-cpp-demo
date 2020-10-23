@@ -89,7 +89,7 @@ webrtc::EncodedImageCallback::Result VideoEncodeHandler::OnEncodedImage(
     const webrtc::EncodedImage& encoded_image,
     const webrtc::CodecSpecificInfo* codec_specific_info,
     const webrtc::RTPFragmentationHeader* fragmentation) {
-  RTC_LOG(LS_INFO) << "-----VideoEncodeHandler::OnEncodedImage-----" << encoded_image.size() << ", " << encoded_image.Timestamp() << "--" << encoded_image._completeFrame;
+  RTC_LOG(LS_INFO) << "-----VideoEncodeHandler::OnEncodedImage-----" << encoded_image.size() << ", " << encoded_image.Timestamp() << "--" << encoded_image._frameType;
 
   return webrtc::EncodedImageCallback::Result(
       webrtc::EncodedImageCallback::Result::OK);
