@@ -89,6 +89,7 @@ PacketBuffer::InsertResult PacketBuffer::InsertPacket(
   } else if (AheadOf(first_seq_num_, seq_num)) {
     // If we have explicitly cleared past this packet then it's old,
     // don't insert it, just silently ignore it.
+    // first_seq_num_值更大
     if (is_cleared_to_first_seq_num_) {
       return result;
     }
@@ -98,11 +99,13 @@ PacketBuffer::InsertResult PacketBuffer::InsertPacket(
 
   if (buffer_[index] != nullptr) {
     // Duplicate packet, just delete the payload.
+    // 忽略重复的包
     if (buffer_[index]->seq_num == packet->seq_num) {
       return result;
     }
 
     // The packet buffer is full, try to expand the buffer.
+    //扩充缓存
     while (ExpandBufferSize() && buffer_[seq_num % buffer_.size()] != nullptr) {
     }
     index = seq_num % buffer_.size();
@@ -131,6 +134,7 @@ PacketBuffer::InsertResult PacketBuffer::InsertPacket(
 
   UpdateMissingPackets(seq_num);
 
+  //查找完整的帧
   result.packets = FindFrames(seq_num);
   return result;
 }

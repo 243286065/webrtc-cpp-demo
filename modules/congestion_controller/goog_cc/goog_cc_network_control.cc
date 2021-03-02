@@ -373,10 +373,12 @@ std::vector<ProbeClusterConfig> GoogCcNetworkController::ResetConstraints(
 
 NetworkControlUpdate GoogCcNetworkController::OnTransportLossReport(
     TransportLossReport msg) {
+  //只接受基于延迟的估计
   if (packet_feedback_only_)
     return NetworkControlUpdate();
   int64_t total_packets_delta =
       msg.packets_received_delta + msg.packets_lost_delta;
+  //进行带宽估计
   bandwidth_estimation_->UpdatePacketsLost(
       msg.packets_lost_delta, total_packets_delta, msg.receive_time);
   return NetworkControlUpdate();
@@ -557,12 +559,14 @@ NetworkControlUpdate GoogCcNetworkController::OnTransportPacketsFeedback(
   backoff_in_alr = result.backoff_in_alr;
 
   if (recovered_from_overuse) {
+    RTC_LOG(INFO) << "************1*******************";
     probe_controller_->SetAlrStartTimeMs(alr_start_time);
     auto probes = probe_controller_->RequestProbe(report.feedback_time.ms());
     update.probe_cluster_configs.insert(update.probe_cluster_configs.end(),
                                         probes.begin(), probes.end());
   } else if (backoff_in_alr) {
     // If we just backed off during ALR, request a new probe.
+    RTC_LOG(INFO) << "************2*******************";
     auto probes = probe_controller_->RequestProbe(report.feedback_time.ms());
     update.probe_cluster_configs.insert(update.probe_cluster_configs.end(),
                                         probes.begin(), probes.end());

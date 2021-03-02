@@ -271,6 +271,7 @@ void AimdRateControl::ChangeBitrate(const RateControlInput& input,
       input.bw_state != BandwidthUsage::kBwOverusing)
     return;
 
+  // 状态转移
   ChangeState(input, at_time);
 
   // We limit the new bitrate based on the troughput to avoid unlimited bitrate

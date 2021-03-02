@@ -51,6 +51,7 @@ size_t ReadTrendlineFilterWindowSize(
   return TrendlineEstimatorSettings::kDefaultTrendlineWindowSize;
 }
 
+//最小二乘法拟合直线，返回斜率
 absl::optional<double> LinearFitSlope(
     const std::deque<TrendlineEstimator::PacketTiming>& packets) {
   RTC_DCHECK(packets.size() >= 2);

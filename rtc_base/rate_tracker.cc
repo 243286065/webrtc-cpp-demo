@@ -41,6 +41,7 @@ double RateTracker::ComputeRateForInterval(
   int64_t current_time = Time();
   // Calculate which buckets to sum up given the current time.  If the time
   // has passed to a new bucket then we have to skip some of the oldest buckets.
+  // 时间间隔限制在当前所有桶的范围，已经被覆盖的不能包含在内
   int64_t available_interval_milliseconds =
       std::min(interval_milliseconds,
                bucket_milliseconds_ * static_cast<int64_t>(bucket_count_));
@@ -50,19 +51,24 @@ double RateTracker::ComputeRateForInterval(
   // Number of milliseconds of the first bucket that are not a portion of the
   // current interval.
   int64_t milliseconds_to_skip;
+  // 判断发生了桶覆盖的情况
   if (current_time >
       initialization_time_milliseconds_ + available_interval_milliseconds) {
+    //需要跳过的时间
     int64_t time_to_skip =
         current_time - bucket_start_time_milliseconds_ +
         static_cast<int64_t>(bucket_count_) * bucket_milliseconds_ -
         available_interval_milliseconds;
+    //需要跳过的桶数量
     buckets_to_skip = time_to_skip / bucket_milliseconds_;
+    //桶内时间偏移
     milliseconds_to_skip = time_to_skip % bucket_milliseconds_;
   } else {
     buckets_to_skip = bucket_count_ - current_bucket_;
     milliseconds_to_skip = 0;
     available_interval_milliseconds =
         TimeDiff(current_time, initialization_time_milliseconds_);
+    // 连一个桶的时间都不到
     // Let one bucket interval pass after initialization before reporting.
     if (available_interval_milliseconds < bucket_milliseconds_) {
       return 0.0;
@@ -109,10 +115,13 @@ int64_t RateTracker::TotalSampleCount() const {
 
 void RateTracker::AddSamples(int64_t sample_count) {
   RTC_DCHECK_LE(0, sample_count);
+  // 确保进行初始化
   EnsureInitialized();
   int64_t current_time = Time();
   // Advance the current bucket as needed for the current time, and reset
   // bucket counts as we advance.
+  // 根据当前时间，对比当前桶的起始时间bucket_start_time_milliseconds_，每一个bucket_milliseconds_间隔，就初始化一个桶
+  // 在当前桶的时间范围内，就停止
   for (size_t i = 0;
        i <= bucket_count_ &&
        current_time >= bucket_start_time_milliseconds_ + bucket_milliseconds_;
@@ -123,10 +132,12 @@ void RateTracker::AddSamples(int64_t sample_count) {
   }
   // Ensure that bucket_start_time_milliseconds_ is updated appropriately if
   // the entire buffer of samples has been expired.
+  // 确保bucket_start_time_milliseconds_的时间正确（有种情况就是桶的数量已达上限）
   bucket_start_time_milliseconds_ +=
       bucket_milliseconds_ *
       ((current_time - bucket_start_time_milliseconds_) / bucket_milliseconds_);
   // Add all samples in the bucket that includes the current time.
+  // 更新当前桶的样本数量和总的样本数量
   sample_buckets_[current_bucket_] += sample_count;
   total_sample_count_ += sample_count;
 }
@@ -135,13 +146,16 @@ int64_t RateTracker::Time() const {
   return rtc::TimeMillis();
 }
 
+// 进行初始化
 void RateTracker::EnsureInitialized() {
   if (bucket_start_time_milliseconds_ == kTimeUnset) {
     initialization_time_milliseconds_ = Time();
     bucket_start_time_milliseconds_ = initialization_time_milliseconds_;
+    // 当前桶的序号
     current_bucket_ = 0;
     // We only need to initialize the first bucket because we reset buckets when
     // current_bucket_ increments.
+    // 初始化第一个桶的数量
     sample_buckets_[current_bucket_] = 0;
   }
 }

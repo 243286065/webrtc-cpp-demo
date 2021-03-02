@@ -148,6 +148,7 @@ std::vector<ProbeClusterConfig> ProbeController::SetBitrates(
     int64_t start_bitrate_bps,
     int64_t max_bitrate_bps,
     int64_t at_time_ms) {
+  RTC_LOG(INFO) << min_bitrate_bps << "-------------" << start_bitrate_bps << "-------" << max_bitrate_bps;
   if (start_bitrate_bps > 0) {
     start_bitrate_bps_ = start_bitrate_bps;
     estimated_bitrate_bps_ = start_bitrate_bps;

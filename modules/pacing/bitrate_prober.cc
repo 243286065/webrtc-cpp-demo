@@ -92,13 +92,16 @@ void BitrateProber::CreateProbeCluster(DataRate bitrate,
   RTC_DCHECK(probing_state_ != ProbingState::kDisabled);
   RTC_DCHECK_GT(bitrate, DataRate::Zero());
 
+  RTC_LOG(INFO) << "#################" <<  bitrate.bps();
   total_probe_count_++;
+  //移除离创建超过5s的探测器
   while (!clusters_.empty() &&
          now - clusters_.front().created_at > kProbeClusterTimeout) {
     clusters_.pop();
     total_failed_probe_count_++;
   }
 
+  //配置新的ProbeCluster
   ProbeCluster cluster;
   cluster.created_at = now;
   cluster.pace_info.probe_cluster_min_probes = config_.min_probe_packets_sent;

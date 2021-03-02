@@ -135,10 +135,12 @@ DelayBasedBwe::Result DelayBasedBwe::IncomingPacketFeedbackVector(
     bool in_alr) {
   RTC_DCHECK_RUNS_SERIALIZED(&network_race_);
 
+  // 按照接收时间进行排序，因为到达时间滤波器InterArrival都是默认接收时间是顺序的
   auto packet_feedback_vector = msg.SortedByReceiveTime();
   // TODO(holmer): An empty feedback vector here likely means that
   // all acks were too late and that the send time history had
   // timed out. We should reduce the rate when this occurs.
+  // 当TransportCC包为空时，返回0
   if (packet_feedback_vector.empty()) {
     RTC_LOG(LS_WARNING) << "Very late feedback received.";
     return DelayBasedBwe::Result();
@@ -152,9 +154,11 @@ DelayBasedBwe::Result DelayBasedBwe::IncomingPacketFeedbackVector(
   }
   bool delayed_feedback = true;
   bool recovered_from_overuse = false;
+  // 获取前一时刻的网络评估状态
   BandwidthUsage prev_detector_state = active_delay_detector_->State();
   for (const auto& packet_feedback : packet_feedback_vector) {
     delayed_feedback = false;
+    //分别处理feedback
     IncomingPacketFeedback(packet_feedback, msg.feedback_time);
     if (prev_detector_state == BandwidthUsage::kBwUnderusing &&
         active_delay_detector_->State() == BandwidthUsage::kBwNormal) {
@@ -170,6 +174,7 @@ DelayBasedBwe::Result DelayBasedBwe::IncomingPacketFeedbackVector(
   }
   rate_control_.SetInApplicationLimitedRegion(in_alr);
   rate_control_.SetNetworkStateEstimate(network_estimate);
+  // 估算最终的估计值
   return MaybeUpdateEstimate(acked_bitrate, probe_bitrate,
                              std::move(network_estimate),
                              recovered_from_overuse, in_alr, msg.feedback_time);
@@ -245,10 +250,12 @@ void DelayBasedBwe::IncomingPacketFeedback(const PacketResult& packet_feedback,
   uint32_t timestamp_delta = 0;
   int64_t recv_delta_ms = 0;
   int size_delta = 0;
+  //到达时间过滤
   bool calculated_deltas = inter_arrival_for_packet->ComputeDeltas(
       timestamp, packet_feedback.receive_time.ms(), at_time.ms(),
       packet_size.bytes(), &timestamp_delta, &recv_delta_ms, &size_delta);
   double send_delta_ms = (1000.0 * timestamp_delta) / (1 << kInterArrivalShift);
+  //延迟梯度过滤
   delay_detector_for_packet->Update(recv_delta_ms, send_delta_ms,
                                     packet_feedback.sent_packet.send_time.ms(),
                                     packet_feedback.receive_time.ms(),

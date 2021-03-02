@@ -33,6 +33,7 @@ RateLimiter::~RateLimiter() {}
 bool RateLimiter::TryUseRate(size_t packet_size_bytes) {
   rtc::CritScope cs(&lock_);
   int64_t now_ms = clock_->TimeInMilliseconds();
+  // 得到由RateStatistics计算得到的当前速率
   absl::optional<uint32_t> current_rate = current_rate_.Rate(now_ms);
   if (current_rate) {
     // If there is a current rate, check if adding bytes would cause maximum
@@ -42,12 +43,15 @@ bool RateLimiter::TryUseRate(size_t packet_size_bytes) {
     // at very low rates, where for instance retransmissions would never be
     // allowed due to too high bitrate caused by a single packet.
 
+    // 如果使用当前packet_size_bytes，计算它占用的速率，转换层bps
     size_t bitrate_addition_bps =
         (packet_size_bytes * 8 * 1000) / window_size_ms_;
+    // 判断是否超过预设值
     if (*current_rate + bitrate_addition_bps > max_rate_bps_)
       return false;
   }
 
+  // 更新速率RateStatistics
   current_rate_.Update(packet_size_bytes, now_ms);
   return true;
 }

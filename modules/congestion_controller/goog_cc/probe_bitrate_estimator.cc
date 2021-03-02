@@ -64,24 +64,30 @@ absl::optional<DataRate> ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
   int cluster_id = packet_feedback.sent_packet.pacing_info.probe_cluster_id;
   RTC_DCHECK_NE(cluster_id, PacedPacketInfo::kNotAProbe);
 
+  //移除旧数据(保留过去1s(kMaxClusterHistory)内的数据)
   EraseOldClusters(packet_feedback.receive_time);
 
   AggregatedCluster* cluster = &clusters_[cluster_id];
 
+  //更新发送的第一个包的时间戳
   if (packet_feedback.sent_packet.send_time < cluster->first_send) {
     cluster->first_send = packet_feedback.sent_packet.send_time;
   }
+  //更新最后发送的包的时间戳及大小
   if (packet_feedback.sent_packet.send_time > cluster->last_send) {
     cluster->last_send = packet_feedback.sent_packet.send_time;
     cluster->size_last_send = packet_feedback.sent_packet.size;
   }
+  //更新第一个包的接收时间及大小
   if (packet_feedback.receive_time < cluster->first_receive) {
     cluster->first_receive = packet_feedback.receive_time;
     cluster->size_first_receive = packet_feedback.sent_packet.size;
   }
+  //更新最后接收到包的时间
   if (packet_feedback.receive_time > cluster->last_receive) {
     cluster->last_receive = packet_feedback.receive_time;
   }
+  //更新一个cluster的包数量和大小
   cluster->size_total += packet_feedback.sent_packet.size;
   cluster->num_probes += 1;
 
@@ -90,19 +96,26 @@ absl::optional<DataRate> ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
   RTC_DCHECK_GT(packet_feedback.sent_packet.pacing_info.probe_cluster_min_bytes,
                 0);
 
+  //探测包收到的最小数量 = probe_cluster_min_probes * 0.8
   int min_probes =
       packet_feedback.sent_packet.pacing_info.probe_cluster_min_probes *
       kMinReceivedProbesRatio;
+  
+  //收到的探测报最小的大小 = probe_cluster_min_bytes * 0.8
   DataSize min_size =
       DataSize::Bytes(
           packet_feedback.sent_packet.pacing_info.probe_cluster_min_bytes) *
       kMinReceivedBytesRatio;
+  //尚未收到足够数量或者大小的包，直接返回
   if (cluster->num_probes < min_probes || cluster->size_total < min_size)
     return absl::nullopt;
 
+  //发送持续时间
   TimeDelta send_interval = cluster->last_send - cluster->first_send;
+  //接受持续时间
   TimeDelta receive_interval = cluster->last_receive - cluster->first_receive;
 
+  //数据异常，或者发送间隔超过1s，或者接收时间间隔超过1s，表示探测失败
   if (send_interval <= TimeDelta::Zero() || send_interval > kMaxProbeInterval ||
       receive_interval <= TimeDelta::Zero() ||
       receive_interval > kMaxProbeInterval) {
@@ -119,21 +132,31 @@ absl::optional<DataRate> ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
     }
     return absl::nullopt;
   }
+
+  //估算发送速率
   // Since the |send_interval| does not include the time it takes to actually
   // send the last packet the size of the last sent packet should not be
   // included when calculating the send bitrate.
   RTC_DCHECK_GT(cluster->size_total, cluster->size_last_send);
+  //发送的数据大小，不包含最后一个包
   DataSize send_size = cluster->size_total - cluster->size_last_send;
+  //发送的速率
   DataRate send_rate = send_size / send_interval;
 
+  //估算接速率
   // Since the |receive_interval| does not include the time it takes to
   // actually receive the first packet the size of the first received packet
   // should not be included when calculating the receive bitrate.
   RTC_DCHECK_GT(cluster->size_total, cluster->size_first_receive);
+  //接收的数据大小(不包含第一个包的大小)
   DataSize receive_size = cluster->size_total - cluster->size_first_receive;
+  //接收速率
   DataRate receive_rate = receive_size / receive_interval;
 
+  //接收速率和发送速率之比
   double ratio = receive_rate / send_rate;
+  
+  //当接收速率/发送速率 > 2,比例过高，也是异常数据，返回空
   if (ratio > kMaxValidRatio) {
     RTC_LOG(LS_INFO) << "Probing unsuccessful, receive/send ratio too high"
                         " [cluster id: "
@@ -156,6 +179,8 @@ absl::optional<DataRate> ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
     }
     return absl::nullopt;
   }
+
+  // 探测成功的情况
   RTC_LOG(LS_INFO) << "Probing successful"
                       " [cluster id: "
                    << cluster_id << "] [send: " << ToString(send_size) << " / "
@@ -166,10 +191,12 @@ absl::optional<DataRate> ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
                    << ToString(receive_interval) << " = "
                    << ToString(receive_rate) << "]";
 
+  // 预测结果就是发送速率和接收速率的最小值
   DataRate res = std::min(send_rate, receive_rate);
   // If we're receiving at significantly lower bitrate than we were sending at,
   // it suggests that we've found the true capacity of the link. In this case,
   // set the target bitrate slightly lower to not immediately overuse.
+  //如果 接收速率<0.9*发送速率， 代表我们已经找到了带宽的大小，取这个值的稍微小点(0.95)修正
   if (receive_rate < kMinRatioForUnsaturatedLink * send_rate) {
     RTC_DCHECK_GT(send_rate, receive_rate);
     res = kTargetUtilizationFraction * receive_rate;

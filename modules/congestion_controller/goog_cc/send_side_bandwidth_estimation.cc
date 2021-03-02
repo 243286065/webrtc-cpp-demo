@@ -434,10 +434,12 @@ void SendSideBandwidthEstimation::UpdateEstimate(Timestamp at_time) {
 
   // We trust the REMB and/or delay-based estimate during the first 2 seconds if
   // we haven't had any packet loss reported, to allow startup bitrate probing.
+  // 如果是尚未通过RR包更新丢包率，或者是在启动的2s内，使用REMB包的接收端预估带宽
   if (last_fraction_loss_ == 0 && IsInStartPhase(at_time)) {
     DataRate new_bitrate = current_target_;
     // TODO(srte): We should not allow the new_bitrate to be larger than the
     // receiver limit here.
+    // receiver_limit_是由接收端REMB估计值更新： GoogCcNetworkController::OnRemoteBitrateReport
     if (receiver_limit_.IsFinite())
       new_bitrate = std::max(receiver_limit_, new_bitrate);
     if (delay_based_limit_.IsFinite())
@@ -459,6 +461,7 @@ void SendSideBandwidthEstimation::UpdateEstimate(Timestamp at_time) {
     }
   }
   UpdateMinHistory(at_time);
+  //未收到丢包报告
   if (last_loss_packet_report_.IsInfinite()) {
     // No feedback received.
     // TODO(srte): This is likely redundant in most cases.
@@ -474,13 +477,16 @@ void SendSideBandwidthEstimation::UpdateEstimate(Timestamp at_time) {
     return;
   }
 
+  // 计算间隔
   TimeDelta time_since_loss_packet_report = at_time - last_loss_packet_report_;
+  //距上次计算间隔在6s内
   if (time_since_loss_packet_report < 1.2 * kMaxRtcpFeedbackInterval) {
     // We only care about loss above a given bitrate threshold.
     float loss = last_fraction_loss_ / 256.0f;
     // We only make decisions based on loss when the bitrate is above a
     // threshold. This is a crude way of handling loss which is uncorrelated
     // to congestion.
+    // bitrate_threshold_默认为0， 丢包率低于2%
     if (current_target_ < bitrate_threshold_ || loss <= low_loss_threshold_) {
       // Loss < 2%: Increase rate by 8% of the min bitrate in the last
       // kBweIncreaseInterval.
@@ -492,29 +498,34 @@ void SendSideBandwidthEstimation::UpdateEstimate(Timestamp at_time) {
       //   If instead one would do: current_bitrate_ *= 1.08^(delta time),
       //   it would take over one second since the lower packet loss to achieve
       //   108kbps.
+      // 以过去1s内的最低码率的8%的速度增长
       DataRate new_bitrate = DataRate::BitsPerSec(
           min_bitrate_history_.front().second.bps() * 1.08 + 0.5);
 
       // Add 1 kbps extra, just to make sure that we do not get stuck
       // (gives a little extra increase at low rates, negligible at higher
       // rates).
+      //加入额外的1kb
       new_bitrate += DataRate::BitsPerSec(1000);
       UpdateTargetBitrate(new_bitrate, at_time);
       return;
     } else if (current_target_ > bitrate_threshold_) {
+      //丢包率在2%～10%，不变化
       if (loss <= high_loss_threshold_) {
         // Loss between 2% - 10%: Do nothing.
       } else {
+        //丢包率大于10%
         // Loss > 10%: Limit the rate decreases to once a kBweDecreaseInterval
         // + rtt.
-        if (!has_decreased_since_last_fraction_loss_ &&
-            (at_time - time_last_decrease_) >=
+        if (!has_decreased_since_last_fraction_loss_ &&             //距上次收到RR丢包信息后没有调整发送速率
+            (at_time - time_last_decrease_) >=                      //调整间隔大于 rtt+300ms
                 (kBweDecreaseInterval + last_round_trip_time_)) {
           time_last_decrease_ = at_time;
 
           // Reduce rate:
           //   newRate = rate * (1 - 0.5*lossRate);
           //   where packetLoss = 256*lossRate;
+          // （1-0.5*丢包率）× current_target_
           DataRate new_bitrate = DataRate::BitsPerSec(
               (current_target_.bps() *
                static_cast<double>(512 - last_fraction_loss_)) /
@@ -580,6 +591,9 @@ DataRate SendSideBandwidthEstimation::MaybeRampupOrBackoff(DataRate new_bitrate,
 }
 
 DataRate SendSideBandwidthEstimation::GetUpperLimit() const {
+  // delay_based_limit_: 基于延迟的带宽估计值 GoogCcNetworkController::OnTransportPacketsFeedback
+  // receiver_limit_: 基于REMB反馈的值
+  // 两个都是接收端基于延迟的带宽预测变种，实际运行中，可能只有一个有效，另一个值为无限大。这个应该是应用TransportCC之后的过渡
   DataRate upper_limit = std::min(delay_based_limit_, receiver_limit_);
   upper_limit = std::min(upper_limit, max_bitrate_configured_);
   if (loss_based_bandwidth_estimation_.Enabled() &&
